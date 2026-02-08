@@ -75,6 +75,29 @@ Real-time updates via Socket.io:
 - **Expired OTPs**: Deleted every 5 minutes
 - **Old OTPs**: Deleted every hour (older than 1 hour)
 
+## Admin User Setup
+
+Create an admin user to access all device OTPs:
+
+```bash
+# Using default credentials (admin@otp-sync.local / admin123456)
+npm run seed:admin
+
+# Using custom email and password
+npm run seed:admin admin@example.com mypassword123
+
+# Using environment variables (set ADMIN_EMAIL and ADMIN_PASSWORD in .env)
+npm run seed:admin
+```
+
+The script will:
+- Check if an admin with the email already exists
+- Create a new admin user if none exists
+- Update existing user to admin if email exists but user is not admin
+- Skip if admin already exists
+
+**Note**: Only admin users can view OTPs from all devices. Regular users cannot see the OTP feed.
+
 ## Development
 
 ```bash
@@ -113,6 +136,7 @@ backend/
 ├── routes/          # API routes (auth, devices, otps)
 ├── middleware/      # Middleware (auth, logger)
 ├── jobs/            # Scheduled jobs (cleanup)
+├── scripts/         # Utility scripts (seedAdmin)
 ├── utils/           # Utilities (logger)
 ├── server.js        # Express server
 ├── nodemon.json     # Nodemon configuration

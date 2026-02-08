@@ -18,11 +18,15 @@ const app = express();
 const server = http.createServer(app);
 
 // Socket.io setup
+const socketCorsOrigins =   '*';
 const io = socketIo(server, {
   cors: {
-    origin:  '*',
+    origin: socketCorsOrigins,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true, // Allow Engine.IO v3 clients
 });
 
 // Store io instance for use in routes
@@ -30,7 +34,7 @@ app.set('io', io);
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGINS?.split(',') || '*',
+  origin:  '*',
   credentials: true,
 }));
 
@@ -153,10 +157,10 @@ mongoose
 
 // Scheduled jobs
 // Clean up expired OTPs every 5 minutes
-cron.schedule('*/5 * * * *', cleanupExpiredOtps);
+// cron.schedule('*/5 * * * *', cleanupExpiredOtps);
 
-// Clean up old OTPs every hour
-cron.schedule('0 * * * *', cleanupOldOtps);
+// // Clean up old OTPs every hour
+// cron.schedule('0 * * * *', cleanupOldOtps);
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {

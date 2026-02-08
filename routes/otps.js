@@ -9,20 +9,66 @@ const router = express.Router();
 router.get('/', auth, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
+    const groupByDevice = req.query.groupByDevice === 'true';
     
     // Admin can see all OTPs, regular users only see their own
     const query = req.user.isAdmin ? {} : { userId: req.userId };
     
     const otps = await OTP.find(query)
       .sort({ receivedAt: -1 })
-      .limit(limit)
-      .populate('deviceId', 'name model');
+      .limit(limit);
 
     // Filter out expired OTPs
     const now = new Date();
     const validOtps = otps.filter(otp => otp.expiresAt > now);
 
-    res.json(validOtps);
+    // Get unique device IDs
+    const deviceIds = [...new Set(validOtps.map(otp => otp.deviceId))];
+    
+    // Fetch device information for all device IDs
+    const devices = await Device.find({ deviceId: { $in: deviceIds } });
+    const deviceMap = {};
+    devices.forEach(device => {
+      deviceMap[device.deviceId] = {
+        deviceId: device.deviceId,
+        name: device.name,
+        model: device.model,
+      };
+    });
+
+    // Attach device information to each OTP
+    const otpsWithDevice = validOtps.map(otp => {
+      const device = deviceMap[otp.deviceId] || {
+        deviceId: otp.deviceId,
+        name: 'Unknown Device',
+        model: 'Unknown',
+      };
+      const otpObj = otp.toObject();
+      return {
+        ...otpObj,
+        receivedAt: otpObj.receivedAt instanceof Date ? otpObj.receivedAt.getTime() : otpObj.receivedAt,
+        expiresAt: otpObj.expiresAt instanceof Date ? otpObj.expiresAt.getTime() : otpObj.expiresAt,
+        device: device,
+      };
+    });
+
+    // If groupByDevice is true, return grouped structure
+    if (groupByDevice) {
+      const grouped = {};
+      otpsWithDevice.forEach(otp => {
+        const deviceId = otp.deviceId;
+        if (!grouped[deviceId]) {
+          grouped[deviceId] = {
+            device: otp.device,
+            otps: [],
+          };
+        }
+        grouped[deviceId].otps.push(otp);
+      });
+      res.json(grouped);
+    } else {
+      res.json(otpsWithDevice);
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -79,15 +125,28 @@ router.post(
       // Update device last active
       await device.updateLastActive();
 
+      // Attach device information to OTP for socket emission
+      const otpObj = otp.toObject();
+      const otpWithDevice = {
+        ...otpObj,
+        receivedAt: otpObj.receivedAt instanceof Date ? otpObj.receivedAt.getTime() : otpObj.receivedAt,
+        expiresAt: otpObj.expiresAt instanceof Date ? otpObj.expiresAt.getTime() : otpObj.expiresAt,
+        device: {
+          deviceId: device.deviceId,
+          name: device.name,
+          model: device.model,
+        },
+      };
+
       const io = req.app.get('io');
       
       // Emit socket event to the user who owns the device
-      io.to(req.userId.toString()).emit('newOTP', otp);
+      io.to(req.userId.toString()).emit('newOTP', otpWithDevice);
       
       // Also emit to admin room so admins can see all OTPs
-      io.to('admin').emit('newOTP', otp);
+      io.to('admin').emit('newOTP', otpWithDevice);
 
-      res.status(201).json(otp);
+      res.status(201).json(otpWithDevice);
     } catch (error) {
       if (error.code === 11000) {
         // Duplicate OTP
